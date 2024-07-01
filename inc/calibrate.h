@@ -43,6 +43,7 @@ struct intrinsicsCameraParam {
 
 struct Distortion {
     double k1, k2;
+    double k3, k4;
 };
 
 
@@ -61,8 +62,14 @@ public:
     double findRadialDistortion(intrinsicsCameraParam const & cameraParam, std::vector<Point> const & imagePoints, std::vector<Point> const & objectPoints, cv::Mat img);
     double findRadialDistortion2(intrinsicsCameraParam const & cameraParam, std::vector<Point> const & imagePoints, std::vector<Point> const & objectPoints, cv::Mat img);
     Distortion findRadialDistortionDouble(intrinsicsCameraParam const & cameraParam, std::vector<Point> const & imagePoints, std::vector<Point> const & objectPoints, cv::Mat img);
+    Distortion findRadialDistortionMax(intrinsicsCameraParam const & cameraParam, std::vector<Point> const & imagePoints, std::vector<Point> const & objectPoints, cv::Mat img);
 
     cv::Mat unDistort(cv::Mat const & img, double k);
+    cv::Mat doubleUnDistort(cv::Mat const & img, Distortion distortion);
+    cv::Mat maxUnDistort(cv::Mat const & img, Distortion distortion);
+
+
+    double findNewDistortion(intrinsicsCameraParam const & cameraParam, std::vector<Point> const & imagePoints, std::vector<Point> const & objectPoints, cv::Mat img);
 };
 
 #endif //ATOMINTELMASH_PRACTICE_CALIBRATE_H

@@ -202,6 +202,7 @@ arma::mat Calibrate::__findHomography(std::vector<Point> const & imagePoints, st
 
     arma::svd(U, S, V, Q);
 
+//    V = V.t();
     arma::mat H = V.col(8);
 
     H = reshape(H, 3, 3);
@@ -209,22 +210,68 @@ arma::mat Calibrate::__findHomography(std::vector<Point> const & imagePoints, st
 }
 
 
+arma::mat newFindHomography(std::vector<Point> const & imagePoints, std::vector<Point> const & objectPoints) {
+    double rx = imagePoints[0].x;
+    double ry = imagePoints[0].y;
+    double rz = 300;
+
+    int countPoints = objectPoints.size();
+
+    arma::mat RT(3, 4);
+    arma::mat v(4, countPoints);
+    arma::mat u(3, countPoints);
+
+    for (int i = 0; i < countPoints; ++i) {
+        u.at(0, i) = imagePoints[i].x;
+        u.at(1, i) = imagePoints[i].y;
+        u.at(2, i) = 1;
+    }
+    for (int i = 0; i < countPoints; ++i) {
+        v.at(0, i) = objectPoints[i].x;
+        v.at(1, i) = objectPoints[i].y;
+        v.at(2, i) = 0;
+        v.at(3, i) = 1;
+    }
+    RT.at(0, 0) = 1;
+    RT.at(0, 1) = 0;
+    RT.at(0, 2) = 0;
+    RT.at(0, 3) = rx;
+    RT.at(1, 0) = 0;
+    RT.at(1, 1) = 1;
+    RT.at(1, 2) = 0;
+    RT.at(1, 3) = ry;
+    RT.at(2, 0) = 0;
+    RT.at(2, 1) = 0;
+    RT.at(2, 2) = 1;
+    RT.at(2, 3) = rz;
+
+    arma::mat H(3, 3);
+    H = arma::solve(u, RT * v);
+
+    H.print("find^^^: ");
+}
+
+
 intrinsicsCameraParam Calibrate::getK(std::vector<Point> const & imagePoints, std::vector<Point> const & objectPoints) {
 
     arma::mat H = this->__findHomography(imagePoints, objectPoints);
+
+//    arma::mat H = newFindHomography(imagePoints, objectPoints);
 
     H = H / H.at(2, 2);
 
     double rx = imagePoints[0].x;
     double ry = imagePoints[0].y;
 
-//    double rz = 175;
+    double rz = 175;
 
     intrinsicsCameraParam res;
-    res.fx = H.at(0, 0);
-    res.fy = H.at(1, 1);
+    res.fx = H.at(0, 0) ;
+    res.fy = H.at(1, 1) ;
     res.cx = abs(H.at(0, 2) - rx);
     res.cy = abs(H.at(1, 2) - ry);
+//    res.cx = abs(H.at(0, 2));
+//    res.cy = abs(H.at(1, 2));
 
     std::cout << H << std::endl;
     std::cout << res << std::endl;
@@ -264,7 +311,12 @@ double Calibrate::findRadialDistortion(intrinsicsCameraParam const & cameraParam
     cv::cvtColor(img, res, cv::COLOR_GRAY2BGR);
 //    double from = -0.0000067;
 
-    double from = -1e-5;
+//    std::vector<Point> cloneImagePoints = objectPoints;
+//    int new_x = (x - x0) / (1 + k * r*r) + x0;
+//    int new_y = (y - y0) / (1 + k * r*r) + y0;
+
+// k = -2e-7;
+    double from = 1e-3;
     double to = 0;
     double step = 1e-7;
 
@@ -285,8 +337,10 @@ double Calibrate::findRadialDistortion(intrinsicsCameraParam const & cameraParam
             double x_img = imagePoints[i].x;
             double y_img = imagePoints[i].y;
 
-            double mx = objectPoints[i].x * cameraParam.fx + rx + cameraParam.cx;
-            double my = objectPoints[i].y * cameraParam.fy + ry + cameraParam.cy;
+            double mx = imagePoints[i].x * cameraParam.fx + rx + cameraParam.cx;
+            double my = imagePoints[i].y * cameraParam.fy + ry + cameraParam.cy;
+//            double mx = cloneImagePoints[i].x;
+//            double my = cloneImagePoints[i].y;
 
             double r = sqrt((mx - x0)*(mx - x0) + (my - y0)*(my - y0));
 
@@ -333,6 +387,18 @@ double Calibrate::findRadialDistortion(intrinsicsCameraParam const & cameraParam
         if (minimize < min || k == from) {
             min = minimize;
             min_k = k;
+
+//            for (int i = 0; i < imagePoints.size(); ++i) {
+//                double x = cloneImagePoints[i].x;
+//                double y = cloneImagePoints[i].y;
+//                long r = sqrt((x - x0)*(x - x0) + (y - y0)*(y - y0));
+//
+//                int new_x = (x - x0) * (1 + min_k * r*r) + x0;
+//                int new_y = (y - y0) * (1 + min_k * r*r) + y0;
+//
+//                cloneImagePoints[i].x = new_x;
+//                cloneImagePoints[i].y = new_y;
+//            }
         }
         k += step;
     }
@@ -345,6 +411,8 @@ double Calibrate::findRadialDistortion(intrinsicsCameraParam const & cameraParam
 
         double mx = objectPoints[i].x * cameraParam.fx + rx + cameraParam.cx;
         double my = objectPoints[i].y * cameraParam.fy + ry + cameraParam.cy;
+//        double mx = objectPoints[i].x * cameraParam.fx + rx;
+//        double my = objectPoints[i].y * cameraParam.fy + ry;
 
         double mx_ = objectPoints[i].x * cameraParam.fx + rx;
         double my_ = objectPoints[i].y * cameraParam.fy + ry;
@@ -356,8 +424,8 @@ double Calibrate::findRadialDistortion(intrinsicsCameraParam const & cameraParam
 //        double x = (mx) * (1 + k * r*r);
 //        double y = (my) * (1 + k * r*r);
 
-        double x = (mx-x0) * (1 + min_k * r*r) + x0;
-        double y = (my-y0) * (1 + min_k * r*r) + y0;
+        double x = (mx-x0) / (1 + min_k * r*r) + x0;
+        double y = (my-y0) / (1 + min_k * r*r) + y0;
 
 //        std::cout << "x: " << x << std::endl;
 //        std::cout << "y: " << y << std::endl;
@@ -383,10 +451,11 @@ double Calibrate::findRadialDistortion(intrinsicsCameraParam const & cameraParam
 //        cv::circle(res, centerCircle1, 5, colorCircle1, cv::FILLED);
 
 
-        cv::imshow("draw_points", res);
-        cv::waitKey();
+//        cv::imshow("draw_points", res);
+//        cv::waitKey();
     }
 
+//    cv::waitKey();
     return min_k;
 }
 
@@ -395,9 +464,9 @@ double Calibrate::findRadialDistortion2(intrinsicsCameraParam const & cameraPara
     cv::Mat res;
     cv::cvtColor(img, res, cv::COLOR_GRAY2BGR);
 
-    double from = -1e-5;
+    double from = -1e-12;
     double to = 0;
-    double step = 1e-7;
+    double step = 1e8  ;
     double min = 0;
     double min_k = 0;
     double x0 = img.cols / 2.;
@@ -460,9 +529,10 @@ double Calibrate::findRadialDistortion2(intrinsicsCameraParam const & cameraPara
         cv::Scalar colorCircle4(0, 255, 255);
         cv::circle(res, centerCircle4, 2, colorCircle4, cv::FILLED);
 
-        cv::imshow("draw_points", res);
-        cv::waitKey();
+//        cv::imshow("draw_points", res);
+//        cv::waitKey();
     }
+    cv::waitKey();
 
     return min_k;
 }
@@ -472,7 +542,7 @@ Distortion Calibrate::findRadialDistortionDouble(intrinsicsCameraParam const & c
     Distortion distortion;
     cv::Mat res;
     cv::cvtColor(img, res, cv::COLOR_GRAY2BGR);
-    double min = 1e9;
+    double min = 0;
     double min_k1 = 0;
     double min_k2 = 0;
     double x0 = img.cols / 2.;
@@ -480,17 +550,16 @@ Distortion Calibrate::findRadialDistortionDouble(intrinsicsCameraParam const & c
     double rx = imagePoints[0].x;
     double ry = imagePoints[0].y;
 
-    double from1 = -1;
-    double to1 = 1;
-    double step1 = 1e-7;
-    double from2 = -1;
-    double to2 = 1;
-    double step2 = 1e-7;
+    double from1 = -1e-6;
+    double to1 = 0;
+    double step1 = 1e-8;
+    double from2 = -1e-12;
+    double to2 = 1e-12;
+    double step2 = 1e-13;
 
     double k1 = from1;
-    double k2 = from2;
-
     while (k1 < to1) {
+        double k2 = from2;
         while (k2 < to2) {
             double minimize = 0;
             for (int i = 0; i < objectPoints.size(); ++i) {
@@ -508,7 +577,7 @@ Distortion Calibrate::findRadialDistortionDouble(intrinsicsCameraParam const & c
                 minimize += ((x_img - x) * (x_img - x) + (y_img - y) * (y_img - y));
             }
 
-            if (minimize < min || k1 == from1 || k2 == from2) {
+            if (minimize < min || k1 == from1) {
                 min = minimize;
                 min_k1 = k1;
                 min_k2 = k2;
@@ -519,6 +588,8 @@ Distortion Calibrate::findRadialDistortionDouble(intrinsicsCameraParam const & c
 
         k1 += step1;
     }
+
+    std::cout << "min: " << min << std::endl;
 
 
     for (int i = 0; i < objectPoints.size(); ++i) {
@@ -550,14 +621,134 @@ Distortion Calibrate::findRadialDistortionDouble(intrinsicsCameraParam const & c
         cv::circle(res, centerCircle4, 2, colorCircle4, cv::FILLED);
 
         cv::imshow("draw_points", res);
-        cv::waitKey();
+//        cv::waitKey();
     }
+    cv::waitKey();
 
     distortion.k1 = min_k1;
     distortion.k2 = min_k2;
 
     return distortion;
 }
+
+Distortion Calibrate::findRadialDistortionMax(intrinsicsCameraParam const & cameraParam, std::vector<Point> const & imagePoints, std::vector<Point> const & objectPoints, cv::Mat img) {
+    Distortion distortion;
+    cv::Mat res;
+    cv::cvtColor(img, res, cv::COLOR_GRAY2BGR);
+    double min = 0;
+    double min_k1 = 0;
+    double min_k2 = 0;
+    double min_k3 = 0;
+    double min_k4 = 0;
+    double x0 = img.cols / 2.;
+    double y0 = img.rows / 2.;
+    double rx = imagePoints[0].x;
+    double ry = imagePoints[0].y;
+
+    double from1 = -1e-6;
+    double to1 = 1e-6;
+    double step1 = 1e-7;
+
+    double from2 = -1e-9;
+    double to2 = 1e-9;
+    double step2 = 1e-10;
+
+    double from3 = -1e-6;
+    double to3 = 1e-6;
+    double step3 = 1e-7;
+
+    double from4 = -1e-9;
+    double to4 = 1e-9;
+    double step4 = 1e-10;
+
+    double k1 = from1;
+    while (k1 < to1) {
+        double k2 = from2;
+        while (k2 < to2) {
+            double k3 = from3;
+            while (k3 < to3) {
+                double k4 = from4;
+                while (k4 < to4) {
+                    double minimize = 0;
+                    for (int i = 0; i < objectPoints.size(); ++i) {
+                        double x_img = imagePoints[i].x;
+                        double y_img = imagePoints[i].y;
+
+                        double mx = objectPoints[i].x * cameraParam.fx + rx + cameraParam.cx;
+                        double my = objectPoints[i].y * cameraParam.fy + ry + cameraParam.cy;
+
+                        double r = sqrt((mx - x0) * (mx - x0) + (my - y0) * (my - y0));
+
+                        double x = (mx - x0) * (1 + k1*r*r + k2*r*r*r*r) + x0;
+                        double y = (my - y0) * (1 + k3*r*r + k4*r*r*r*r) + y0;
+
+                        minimize += ((x_img - x) * (x_img - x) + (y_img - y) * (y_img - y));
+                    }
+
+                    if (minimize < min || k1 == from1) {
+                        min = minimize;
+                        min_k1 = k1;
+                        min_k2 = k2;
+                        min_k3 = k3;
+                        min_k4 = k4;
+                    }
+
+                    k4 += step4;
+                }
+
+                k3 += step3;
+            }
+
+            k2 += step2;
+        }
+
+        k1 += step1;
+    }
+
+    std::cout << "min: " << min << std::endl;
+
+
+    for (int i = 0; i < objectPoints.size(); ++i) {
+        double x_img = imagePoints[i].x;
+        double y_img = imagePoints[i].y;
+
+        double mx = objectPoints[i].x * cameraParam.fx + rx + cameraParam.cx;
+        double my = objectPoints[i].y * cameraParam.fy + ry + cameraParam.cy;
+
+        double r = sqrt((mx - x0)*(mx - x0) + (my - y0)*(my - y0));
+
+        double x = (mx-x0) * (1 + min_k1 * r*r + min_k2 * r*r*r*r) + x0;
+        double y = (my-y0) * (1 + min_k3 * r*r + min_k4 * r*r*r*r) + y0;
+
+        cv::Point centerCircle1(x, y);
+        cv::Scalar colorCircle1(0, 0, 255);
+        cv::circle(res, centerCircle1, 5, colorCircle1, cv::FILLED);
+
+        cv::Point centerCircle2(x_img, y_img);
+        cv::Scalar colorCircle2(0, 255, 0);
+        cv::circle(res, centerCircle2, 5, colorCircle2, cv::FILLED);
+
+        cv::Point centerCircle3(x0, y0);
+        cv::Scalar colorCircle3(255, 0, 0);
+        cv::circle(res, centerCircle3, 10, colorCircle3, cv::FILLED);
+
+        cv::Point centerCircle4(mx, my);
+        cv::Scalar colorCircle4(0, 255, 255);
+        cv::circle(res, centerCircle4, 2, colorCircle4, cv::FILLED);
+
+//        cv::imshow("draw_points", res);
+//        cv::waitKey();
+    }
+    cv::waitKey();
+
+    distortion.k1 = min_k1;
+    distortion.k2 = min_k2;
+    distortion.k3 = min_k3;
+    distortion.k4 = min_k4;
+
+    return distortion;
+}
+
 
 
 cv::Mat Calibrate::unDistort(cv::Mat const & img, double k) {
@@ -625,10 +816,10 @@ cv::Mat Calibrate::unDistort(cv::Mat const & img, double k) {
 
             double rd = (1/(k*r) + sqrt(1/(k*k*r*r) - 4/k))/2;
 
-            int new_x = (x - x0) * (1 + k * rd*rd) + x0;
-            int new_y = (y - y0) * (1 + k * rd*rd) + y0;
-//            int new_x = (x - x0) * (rd/r) + x0;
-//            int new_y = (y - y0) * (rd/r) + y0;
+//            int new_x = (x - x0) * (1 + k * r*r) + x0;
+//            int new_y = (y - y0) * (1 + k * r*r) + y0;
+            int new_x = (x - x0) * (rd / r) + x0;
+            int new_y = (y - y0) * (rd / r) + y0;
 
 //            std::cout << "new_x: " << new_x << "; new_y: " << new_y << std::endl;
 
@@ -640,4 +831,115 @@ cv::Mat Calibrate::unDistort(cv::Mat const & img, double k) {
 
     return res;
 }
+
+
+cv::Mat Calibrate::doubleUnDistort(cv::Mat const & img, Distortion distortion) {
+    cv::Mat res = img.clone();
+
+    if (distortion.k1 == 0 || distortion.k2 == 0) {
+        return res;
+    }
+
+    for (int y = 0; y < img.rows; ++y) {
+        for (int x = 0; x < img.cols; ++x) {
+            res.at<uchar>(y, x) = 0;
+        }
+    }
+
+    int x0 = img.cols / 2;
+    int y0 = img.rows / 2;
+
+    for (int y = 0; y < img.rows; ++y) {
+        for (int x = 0; x < img.cols; ++x) {
+            uchar value = img.at<uchar>(y, x);
+
+            long r = sqrt((x - x0)*(x - x0) + (y - y0)*(y - y0));
+
+//            double rd = (1/(k*r) + sqrt(1/(k*k*r*r) - 4/k))/2;
+
+            int new_x = (x - x0) / (1 + distortion.k1 * r*r + distortion.k2 * r*r*r*r) + x0;
+            int new_y = (y - y0) / (1 + distortion.k1 * r*r + distortion.k2 * r*r*r*r) + y0;
+//            int new_x = (x - x0) * (rd / r) + x0;
+//            int new_y = (y - y0) * (rd / r) + y0;
+
+//            std::cout << "new_x: " << new_x << "; new_y: " << new_y << std::endl;
+
+            if ((new_x > 0 && new_x < img.cols) && (new_y > 0 && new_y < img.rows)) {
+                res.at<uchar>(y, x) = img.at<uchar>(new_y, new_x);;
+            }
+        }
+    }
+
+    return res;
+}
+
+
+cv::Mat Calibrate::maxUnDistort(cv::Mat const & img, Distortion distortion) {
+    cv::Mat res = img.clone();
+
+    if (distortion.k1 == 0 || distortion.k2 == 0) {
+        return res;
+    }
+
+    for (int y = 0; y < img.rows; ++y) {
+        for (int x = 0; x < img.cols; ++x) {
+            res.at<uchar>(y, x) = 0;
+        }
+    }
+
+    int x0 = img.cols / 2;
+    int y0 = img.rows / 2;
+
+    for (int y = 0; y < img.rows; ++y) {
+        for (int x = 0; x < img.cols; ++x) {
+            long r = sqrt((x - x0)*(x - x0) + (y - y0)*(y - y0));
+
+            int new_x = (x - x0) / (1 + distortion.k1 * r*r + distortion.k2 * r*r*r*r) + x0;
+            int new_y = (y - y0) / (1 + distortion.k3 * r*r + distortion.k4 * r*r*r*r) + y0;
+
+            if ((new_x > 0 && new_x < img.cols) && (new_y > 0 && new_y < img.rows)) {
+                res.at<uchar>(y, x) = img.at<uchar>(new_y, new_x);;
+            }
+        }
+    }
+
+    return res;
+}
+
+
+double Calibrate::findNewDistortion(intrinsicsCameraParam const & cameraParam, std::vector<Point> const & imagePoints, std::vector<Point> const & objectPoints, cv::Mat img) {
+    int x0 = img.cols / 2;
+    int y0 = img.rows / 2;
+    int countPoints = imagePoints.size();
+
+    arma::mat M(countPoints, 3);
+
+    arma::mat b(countPoints, 1);
+
+    double lambda;
+
+    for (int i = 0; i < countPoints; ++i) {
+        int x = imagePoints[i].x;
+        int y = imagePoints[i].y;
+
+        M.at(i, 0) = x;
+        M.at(i, 1) = y;
+        M.at(i, 2) = 1;
+
+        b.at(i, 0) = - (x*x + y*y);
+    }
+
+    arma::mat abc(3, 3);
+//    abc.print("abc: ");
+    abc = arma::solve(M.t() * M, arma::eye(3, 3)) * M.t() * b;
+
+    std::cout << "hi " << std::endl << abc.at(0, 0) << std::endl << abc.at(0, 1) << std::endl << abc.at(0, 2) << std::endl;
+
+    lambda = 1 / (x0*x0 + y0*y0 + abc.at(0, 0)*x0 + abc.at(0, 1)*y0 + abc.at(0, 2));
+
+    std::cout << "hello lambda: " << lambda << std::endl;
+
+    return lambda;
+}
+
 
